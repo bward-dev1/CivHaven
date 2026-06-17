@@ -1,0 +1,19 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1024" height="1024" fill="#0f2342"/>
+  <!-- centre cluster of pointy-top hexes -->
+  <g stroke="#0a1426" stroke-width="7" stroke-linejoin="round">
+    <polygon points="382,212 512,287 512,437 382,512 252,437 252,287" fill="#7d7f44"/>
+    <polygon points="642,212 772,287 772,437 642,512 512,437 512,287" fill="#2f78ad"/>
+    <polygon points="382,512 512,587 512,737 382,812 252,737 252,587" fill="#2f78ad"/>
+    <polygon points="642,512 772,587 772,737 642,812 512,737 512,587" fill="#5a8a38"/>
+    <polygon points="512,362 642,437 642,587 512,662 382,587 382,437" fill="#5a8a38"/>
+  </g>
+  <!-- gold city marker on the centre tile -->
+  <circle cx="512" cy="512" r="52" fill="#f4d35e" stroke="#0a1426" stroke-width="8"/>
+  <g fill="#0a1426">
+    <rect x="484" y="496" width="56" height="28"/>
+    <rect x="484" y="487" width="13" height="13"/>
+    <rect x="505" y="487" width="13" height="13"/>
+    <rect x="527" y="487" width="13" height="13"/>
+  </g>
+</svg>

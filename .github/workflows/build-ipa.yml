@@ -1,0 +1,111 @@
+name: Build unsigned IPA
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Tag to publish the IPA under (e.g. v1.0.0). Leave blank to only upload a build artifact."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_16.app || sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build (unsigned, device SDK)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project CivHaven.xcodeproj \
+            -scheme CivHaven \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ONLY_ACTIVE_ARCH=NO \
+            clean build | xcpretty || \
+          xcodebuild \
+            -project CivHaven.xcodeproj \
+            -scheme CivHaven \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            ONLY_ACTIVE_ARCH=NO \
+            clean build
+
+      - name: Package .ipa
+        run: |
+          APP_PATH="build/Build/Products/Release-iphoneos/CivHaven.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "::error::App bundle not found at $APP_PATH"
+            find build -name "*.app" -maxdepth 6 -print
+            exit 1
+          fi
+          rm -rf Payload CivHaven.ipa
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          zip -qr CivHaven.ipa Payload
+          echo "Built IPA:"
+          ls -lh CivHaven.ipa
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CivHaven-ipa
+          path: CivHaven.ipa
+          if-no-files-found: error
+
+      - name: Determine release tag
+        id: tagref
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.inputs.release_tag }}" ]; then
+            echo "tag=${{ github.event.inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish GitHub Release
+        if: steps.tagref.outputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tagref.outputs.tag }}
+          name: CivHaven ${{ steps.tagref.outputs.tag }}
+          files: CivHaven.ipa
+          generate_release_notes: true
+          body: |
+            Unsigned IPA for sideloading (LiveContainer / AltStore / SideStore).
+            This build is **not code-signed** — install it with your own signing tool.
