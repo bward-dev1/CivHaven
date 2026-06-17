@@ -20,13 +20,17 @@ concurrency:
 
 jobs:
   build:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.app || sudo xcode-select -s /Applications/Xcode.app
+      - name: Select newest available Xcode
+        run: |
+          NEWEST="$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$NEWEST" ]; then NEWEST="/Applications/Xcode.app"; fi
+          echo "Using $NEWEST"
+          sudo xcode-select -s "$NEWEST"
 
       - name: Show toolchain
         run: |
@@ -41,18 +45,6 @@ jobs:
 
       - name: Build (unsigned, device SDK)
         run: |
-          set -o pipefail
-          xcodebuild \
-            -project CivHaven.xcodeproj \
-            -scheme CivHaven \
-            -configuration Release \
-            -sdk iphoneos \
-            -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            ONLY_ACTIVE_ARCH=NO \
-            clean build | xcpretty || \
           xcodebuild \
             -project CivHaven.xcodeproj \
             -scheme CivHaven \
