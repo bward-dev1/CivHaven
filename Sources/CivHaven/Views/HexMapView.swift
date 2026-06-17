@@ -90,7 +90,7 @@ struct HexMapView: View {
 
         // Movement highlights for the selected unit.
         if let uid = selectedUnitID, let unit = game.units.first(where: { $0.id == uid }), unit.owner == game.humanPlayer {
-            let reach = Pathfinder.reachable(from: unit.coord, budget: unit.movesLeft, map: game.map)
+            let reach = Pathfinder.reachable(from: unit.coord, budget: unit.movesLeft, map: game.map, domain: unit.type.domain)
             for (coord, _) in reach where game.isVisible(coord) {
                 let center = HexLayout.pixel(for: coord, size: hexSize, origin: origin)
                 let corners = HexLayout.corners(center: center, size: hexSize - 0.5)

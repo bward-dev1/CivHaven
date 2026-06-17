@@ -39,9 +39,7 @@ enum AIController {
             return .unit(.settler)
         }
         if myMilitary < cityCount + 1 {
-            if techs.contains(.bronzeWorking) { return .unit(.spearman) }
-            if techs.contains(.archery) { return .unit(.archer) }
-            return .unit(.warrior)
+            return .unit(bestLandUnit(techs))
         }
         if techs.contains(.writing) && !city.buildings.contains(.library) {
             return .building(.library)
@@ -49,7 +47,26 @@ enum AIController {
         if techs.contains(.pottery) && !city.buildings.contains(.granary) {
             return .building(.granary)
         }
-        return .unit(.warrior)
+        // Occasionally raise a wonder if one is available.
+        if let w = availableWonder(for: city, player: p, state: state) {
+            return .wonder(w)
+        }
+        return .unit(bestLandUnit(techs))
+    }
+
+    /// The strongest land combat unit the player can currently build.
+    private static func bestLandUnit(_ techs: Set<TechID>) -> UnitType {
+        let ladder: [UnitType] = [.rifleman, .musketman, .knight, .crossbowman, .swordsman, .spearman, .archer, .warrior]
+        return ladder.first { u in u.requiredTech.map { techs.contains($0) } ?? true } ?? .warrior
+    }
+
+    private static func availableWonder(for city: City, player p: Int, state: GameState) -> WonderType? {
+        let techs = state.player(p).tech.researched
+        return WonderType.allCases.first { w in
+            !state.builtWonders.contains(w)
+            && (w.requiredTech.map { techs.contains($0) } ?? true)
+            && (!w.requiresCoast || city.isCoastal)
+        }
     }
 
     private static func handleSettler(_ unit: Unit, player p: Int, state: GameState) {
@@ -85,7 +102,8 @@ enum AIController {
     }
 
     private static func wander(_ unit: Unit, state: GameState) {
-        let reachable = Pathfinder.reachable(from: unit.coord, budget: unit.movesLeft, map: state.map)
+        let reachable = Pathfinder.reachable(from: unit.coord, budget: unit.movesLeft,
+                                             map: state.map, domain: unit.type.domain)
         guard let dest = reachable.keys.filter({ state.unit(at: $0) == nil }).randomElementStable(seed: unit.id.hashValue) else { return }
         state.aiMove(unit.id, to: dest)
     }

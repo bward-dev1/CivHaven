@@ -14,7 +14,8 @@ struct GameView: View {
         _game = StateObject(wrappedValue: GameState(mapWidth: config.width,
                                                     mapHeight: config.height,
                                                     aiCount: config.aiCount,
-                                                    seed: config.seed))
+                                                    seed: config.seed,
+                                                    humanCivID: config.humanCivID))
     }
 
     var body: some View {

@@ -5,12 +5,14 @@ struct Player: Codable, Identifiable {
     var name: String
     var isHuman: Bool
     var colorHex: String
+    var civID: String = "rome"
     var gold: Int = 0
     var science: Int = 0
     var tech: TechState = TechState()
     var defeated: Bool = false
 
     var color: Color { Color(hex: colorHex) }
+    var civ: Civilization { Civilization.by(id: civID) ?? Civilization.all[0] }
 }
 
 extension Color {

@@ -6,6 +6,7 @@ struct GameConfig: Identifiable {
     var height: Int
     var aiCount: Int
     var seed: UInt64
+    var humanCivID: String?
 }
 
 @main
@@ -22,7 +23,12 @@ struct MainMenuView: View {
     @State private var mapSize = 1          // 0 small, 1 standard, 2 large
     @State private var aiCount = 2
     @State private var seedText = ""
+    @State private var selectedCivID: String? = nil   // nil = random
     @State private var startConfig: GameConfig?
+
+    private var selectedCiv: Civilization? {
+        selectedCivID.flatMap { Civilization.by(id: $0) }
+    }
 
     private let sizes: [(name: String, w: Int, h: Int)] = [
         ("Duel", 16, 12), ("Standard", 24, 18), ("Large", 34, 24)
@@ -55,6 +61,40 @@ struct MainMenuView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Opponents: \(aiCount)").font(.headline).foregroundColor(.white)
                             Stepper("", value: $aiCount, in: 1...5).labelsHidden()
+                        }
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Civilization").font(.headline).foregroundColor(.white)
+                            Menu {
+                                Button("🎲 Random") { selectedCivID = nil }
+                                ForEach(Civilization.all) { civ in
+                                    Button("\(civ.name) — \(civ.leader)") { selectedCivID = civ.id }
+                                }
+                            } label: {
+                                HStack {
+                                    if let c = selectedCiv {
+                                        Circle().fill(Color(hex: c.colorHex)).frame(width: 14, height: 14)
+                                        Text("\(c.name) — \(c.leader)")
+                                    } else {
+                                        Image(systemName: "dice").foregroundColor(.white)
+                                        Text("Random")
+                                    }
+                                    Spacer()
+                                    Image(systemName: "chevron.up.chevron.down").font(.caption)
+                                }
+                                .foregroundColor(.white)
+                                .padding(10)
+                                .background(.white.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                            }
+                            if let c = selectedCiv {
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(c.abilityName).font(.subheadline).bold().foregroundColor(.cyan)
+                                    Text(c.abilityDescription).font(.caption).foregroundColor(.white.opacity(0.8))
+                                    Text("Unique: \(c.uniqueUnitName) (replaces \(c.uniqueUnitReplaces))")
+                                        .font(.caption2).foregroundColor(.yellow.opacity(0.85))
+                                }
+                                .padding(.top, 2)
+                            }
                         }
 
                         VStack(alignment: .leading, spacing: 6) {
@@ -99,7 +139,8 @@ struct MainMenuView: View {
             // Derive a seed from current time without Date APIs that may be restricted.
             seed = UInt64(bitPattern: Int64(seedText.hashValue)) ^ 0x1234_5678_9ABC_DEF0 &+ UInt64(aiCount * 7919 + size.w * 31)
         }
-        return GameConfig(width: size.w, height: size.h, aiCount: aiCount, seed: seed == 0 ? 42 : seed)
+        return GameConfig(width: size.w, height: size.h, aiCount: aiCount,
+                          seed: seed == 0 ? 42 : seed, humanCivID: selectedCivID)
     }
 }
 

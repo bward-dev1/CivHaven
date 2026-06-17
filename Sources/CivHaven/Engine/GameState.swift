@@ -15,23 +15,41 @@ final class GameState: ObservableObject {
     @Published private(set) var explored: [Set<HexCoord>]
 
     let humanPlayer = 0
-    private var cityCounter = 0
-    private let cityNames = ["Haven", "Auroria", "Brightford", "Stonewatch", "Kingsreach",
-                             "Rivermill", "Oakhollow", "Stormvale", "Goldcrest", "Irongate",
-                             "Sunhaven", "Frostpeak"]
+    private var cityCountByPlayer: [Int: Int] = [:]
+    private let fallbackCityNames = ["Haven", "Auroria", "Brightford", "Stonewatch", "Kingsreach",
+                                     "Rivermill", "Oakhollow", "Stormvale", "Goldcrest", "Irongate"]
 
-    init(mapWidth: Int = 22, mapHeight: Int = 16, aiCount: Int = 2, seed: UInt64 = 12345) {
+    /// World-unique wonders already built anywhere on the map.
+    @Published private(set) var builtWonders: Set<WonderType> = []
+
+    init(mapWidth: Int = 22, mapHeight: Int = 16, aiCount: Int = 2, seed: UInt64 = 12345,
+         humanCivID: String? = nil) {
         let generated = GameMap.generate(width: mapWidth, height: mapHeight, seed: seed)
         self.map = generated
 
+        // Deal each player a distinct civilization, drawn deterministically from the seed.
+        var rng = SeededRNG(seed: seed ^ 0xC1F)
+        var pool = Civilization.all
+        for i in stride(from: pool.count - 1, to: 0, by: -1) {
+            let j = Int(rng.next() % UInt64(i + 1))
+            pool.swapAt(i, j)
+        }
+        func takeCiv(preferred: String?) -> Civilization {
+            if let id = preferred, let idx = pool.firstIndex(where: { $0.id == id }) {
+                return pool.remove(at: idx)
+            }
+            return pool.isEmpty ? Civilization.all[0] : pool.removeFirst()
+        }
+
+        let humanCiv = takeCiv(preferred: humanCivID)
         var players: [Player] = [
-            Player(id: 0, name: "You", isHuman: true, colorHex: "2E86DE")
+            Player(id: 0, name: "You — \(humanCiv.name)", isHuman: true,
+                   colorHex: humanCiv.colorHex, civID: humanCiv.id)
         ]
-        let aiColors = ["E74C3C", "27AE60", "8E44AD", "F39C12", "16A085"]
-        let aiNames = ["Rome", "Egypt", "Greece", "Persia", "China"]
         for i in 0..<aiCount {
-            players.append(Player(id: i + 1, name: aiNames[i % aiNames.count],
-                                  isHuman: false, colorHex: aiColors[i % aiColors.count]))
+            let civ = takeCiv(preferred: nil)
+            players.append(Player(id: i + 1, name: "\(civ.leader) of \(civ.name)",
+                                  isHuman: false, colorHex: civ.colorHex, civID: civ.id))
         }
         self.players = players
         self.explored = Array(repeating: [], count: players.count)
@@ -40,6 +58,13 @@ final class GameState: ObservableObject {
 
         placeStartingUnits(seed: seed)
         revealAround(player: humanPlayer)
+    }
+
+    // MARK: - Wonder helpers
+
+    /// Does this player own a wonder granting the given effect?
+    private func playerOwnsWonder(_ p: Int, where predicate: (WonderType) -> Bool) -> Bool {
+        cities.contains { $0.owner == p && $0.wonders.contains(where: predicate) }
     }
 
     // MARK: - Lookups
@@ -101,9 +126,10 @@ final class GameState: ObservableObject {
         var mover = units[idx]
         guard mover.movesLeft > 0 else { return false }
         let owner = mover.owner
+        let domain = mover.type.domain
 
         let occupied = Set(units.filter { $0.id != id && $0.owner == owner }.map { $0.coord })
-        guard let path = Pathfinder.path(from: mover.coord, to: dest, map: map, blocked: occupied) else { return false }
+        guard let path = Pathfinder.path(from: mover.coord, to: dest, map: map, domain: domain, blocked: occupied) else { return false }
 
         for step in path {
             // Attack if an enemy unit/city occupies the next tile, then stop.
@@ -115,7 +141,7 @@ final class GameState: ObservableObject {
                 if mover.type.isCombatant { attackCity(attackerID: id, cityID: enemyCity.id) }
                 break
             }
-            guard let cost = map[step]?.moveCost, mover.movesLeft >= 1 else { break }
+            guard let cost = map[step]?.moveCost(for: domain), mover.movesLeft >= 1 else { break }
             mover.coord = step
             mover.movesLeft = max(0, mover.movesLeft - cost)
             mover.fortified = false
@@ -135,10 +161,14 @@ final class GameState: ObservableObject {
             addLog("Can't found a city here.")
             return
         }
-        let name = cityNames[cityCounter % cityNames.count]
-        cityCounter += 1
-        var city = City(name: name, owner: settler.owner, coord: settler.coord)
+        let owner = settler.owner
+        let names = players[owner].civ.cityNames.isEmpty ? fallbackCityNames : players[owner].civ.cityNames
+        let n = cityCountByPlayer[owner, default: 0]
+        cityCountByPlayer[owner] = n + 1
+        let name = n < names.count ? names[n] : "\(names[n % names.count]) \(n / names.count + 1)"
+        var city = City(name: name, owner: owner, coord: settler.coord)
         city.queue = .unit(.warrior)
+        city.isCoastal = settler.coord.neighbors.contains { map[$0]?.isWater == true }
         claimTiles(for: &city)
         cities.append(city)
         units.remove(at: idx)
@@ -226,7 +256,9 @@ final class GameState: ObservableObject {
         var city = cities[cIdx]
 
         let aStr = Double(attacker.type.strength) * (Double(attacker.hp) / 100.0)
-        let dmg = Int((28.0 * aStr / Double(city.defenseStrength)).clamped(to: 8...60))
+        var defense = Double(city.defenseStrength)
+        if playerOwnsWonder(city.owner, where: { $0.grantsDefense }) { defense *= 1.5 }
+        let dmg = Int((28.0 * aStr / defense).clamped(to: 8...60))
         city.hp -= dmg
         attacker.movesLeft = 0
         addLog("\(players[attacker.owner].name) assaults \(city.name)!")
@@ -280,7 +312,13 @@ final class GameState: ObservableObject {
     }
 
     private func refreshAllUnits() {
-        for i in units.indices { units[i].refresh() }
+        for i in units.indices {
+            units[i].refresh()
+            // Great Lighthouse: the owner's ships sail one tile farther.
+            if units[i].type.isNaval, playerOwnsWonder(units[i].owner, where: { $0.grantsNavalMovement }) {
+                units[i].movesLeft += 1
+            }
+        }
     }
 
     private func produceAndGrow(for p: Int) {
@@ -289,6 +327,7 @@ final class GameState: ObservableObject {
         for city in cities(ofPlayer: p) {
             if city.buildings.contains(.library) { sciencePerTurn += 2 }
             sciencePerTurn += city.population
+            for w in city.wonders { sciencePerTurn += w.bonusScience }
         }
         players[p].science += sciencePerTurn
         advanceResearch(player: p, science: sciencePerTurn)
@@ -302,6 +341,9 @@ final class GameState: ObservableObject {
             }
             if let y = map[city.coord]?.totalYields { food += y.food; prod += y.production; gold += y.gold }
             if city.buildings.contains(.granary) { food += 2 }
+            for w in city.wonders {
+                food += w.cityYields.food; prod += w.cityYields.production; gold += w.cityYields.gold
+            }
 
             let surplus = food - city.population * 2
             city.foodStored += max(-city.population, surplus)
@@ -334,15 +376,35 @@ final class GameState: ObservableObject {
     private func completeProduction(_ item: ProductionItem, in city: inout City, player p: Int) {
         switch item {
         case .unit(let type):
-            let spot = city.coord
-            let target = unit(at: spot) == nil ? spot
-                : (city.coord.neighbors.first { map[$0]?.moveCost != nil && unit(at: $0) == nil } ?? spot)
-            units.append(Unit(type: type, owner: p, coord: target))
-            if city.owner == humanPlayer { addLog("\(city.name) trained a \(type.rawValue).") }
+            let target: HexCoord?
+            if type.domain == .sea {
+                target = city.coord.neighbors.first { map[$0]?.isWater == true && unit(at: $0) == nil }
+            } else if unit(at: city.coord) == nil {
+                target = city.coord
+            } else {
+                target = city.coord.neighbors.first { map[$0]?.moveCost != nil && unit(at: $0) == nil }
+            }
+            if let t = target {
+                units.append(Unit(type: type, owner: p, coord: t))
+                if city.owner == humanPlayer { addLog("\(city.name) trained a \(type.displayName).") }
+            } else {
+                // No room to deploy — bank half the hammers toward the next attempt.
+                city.productionStored = item.cost / 2
+            }
             city.queue = .unit(.warrior)
         case .building(let b):
             city.buildings.insert(b)
-            if city.owner == humanPlayer { addLog("\(city.name) built a \(b.displayName).") }
+            if city.owner == humanPlayer { addLog("\(city.name) built \(b.displayName).") }
+            city.queue = nil
+        case .wonder(let w):
+            guard !builtWonders.contains(w) else {
+                if city.owner == humanPlayer { addLog("\(w.displayName) was already built elsewhere.") }
+                city.queue = nil
+                return
+            }
+            city.wonders.insert(w)
+            builtWonders.insert(w)
+            addLog("✨ \(players[p].name) completed \(w.displayName)!")
             city.queue = nil
         }
     }

@@ -32,11 +32,25 @@ struct CityView: View {
                         }
                     }
 
-                    Section("Build Unit") {
-                        ForEach(buildableUnits(), id: \.self) { type in
-                            buildButton(label: "\(type.symbol) \(type.rawValue.capitalized)",
+                    Section("Land Units") {
+                        ForEach(buildableUnits(naval: false), id: \.self) { type in
+                            buildButton(label: "\(type.symbol) \(type.displayName)",
                                         cost: type.cost,
                                         item: .unit(type))
+                        }
+                    }
+
+                    if city.isCoastal {
+                        Section("Naval Units") {
+                            let ships = buildableUnits(naval: true)
+                            if ships.isEmpty {
+                                Text("Research Sailing to build ships.").font(.caption).foregroundColor(.secondary)
+                            }
+                            ForEach(ships, id: \.self) { type in
+                                buildButton(label: "\(type.symbol) \(type.displayName)",
+                                            cost: type.cost,
+                                            item: .unit(type))
+                            }
                         }
                     }
 
@@ -49,6 +63,16 @@ struct CityView: View {
                                         built: city.buildings.contains(b))
                         }
                     }
+
+                    Section("World Wonders") {
+                        ForEach(buildableWonders(city), id: \.self) { w in
+                            buildButton(label: "✨ \(w.displayName)",
+                                        cost: w.cost,
+                                        item: .wonder(w),
+                                        detail: w.blurb,
+                                        built: city.wonders.contains(w))
+                        }
+                    }
                 }
                 .navigationTitle(city.name)
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
@@ -58,11 +82,22 @@ struct CityView: View {
         }
     }
 
-    private func buildableUnits() -> [UnitType] {
+    private func buildableUnits(naval: Bool) -> [UnitType] {
         let techs = game.player(game.humanPlayer).tech.researched
         return UnitType.allCases.filter { type in
+            guard type.isNaval == naval else { return false }
             guard let req = type.requiredTech else { return true }
             return techs.contains(req)
+        }
+    }
+
+    private func buildableWonders(_ city: City) -> [WonderType] {
+        let techs = game.player(game.humanPlayer).tech.researched
+        return WonderType.allCases.filter { w in
+            // Hide wonders built elsewhere (unless this city already has it, to show the ✓).
+            if game.builtWonders.contains(w) && !city.wonders.contains(w) { return false }
+            if w.requiresCoast && !city.isCoastal { return false }
+            return w.requiredTech.map { techs.contains($0) } ?? true
         }
     }
 

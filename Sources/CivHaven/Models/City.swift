@@ -4,18 +4,21 @@ import Foundation
 enum ProductionItem: Codable, Equatable {
     case unit(UnitType)
     case building(BuildingType)
+    case wonder(WonderType)
 
     var cost: Int {
         switch self {
         case .unit(let u):     return u.cost
         case .building(let b): return b.cost
+        case .wonder(let w):   return w.cost
         }
     }
 
     var label: String {
         switch self {
-        case .unit(let u):     return u.rawValue.capitalized
+        case .unit(let u):     return u.displayName
         case .building(let b): return b.displayName
+        case .wonder(let w):   return w.displayName
         }
     }
 }
@@ -65,7 +68,9 @@ struct City: Codable, Identifiable {
     var productionStored: Int = 0
     var queue: ProductionItem?
     var buildings: Set<BuildingType> = []
+    var wonders: Set<WonderType> = []
     var workedTiles: Set<HexCoord> = []
+    var isCoastal: Bool = false
 
     init(name: String, owner: Int, coord: HexCoord) {
         self.id = UUID()

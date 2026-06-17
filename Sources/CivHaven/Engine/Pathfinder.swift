@@ -4,8 +4,9 @@ import Foundation
 enum Pathfinder {
     /// Returns the cheapest path (excluding `start`, including `goal`) or nil.
     static func path(from start: HexCoord, to goal: HexCoord, map: GameMap,
+                     domain: UnitDomain = .land,
                      blocked: Set<HexCoord> = []) -> [HexCoord]? {
-        guard map.contains(goal), map[goal]?.moveCost != nil || goal == start else { return nil }
+        guard map.contains(goal), map[goal]?.moveCost(for: domain) != nil || goal == start else { return nil }
 
         var frontier = PriorityQueue()
         frontier.push(start, priority: 0)
@@ -15,7 +16,7 @@ enum Pathfinder {
         while let current = frontier.pop() {
             if current == goal { break }
             for next in current.neighbors {
-                guard let tile = map[next], let stepCost = tile.moveCost else { continue }
+                guard let tile = map[next], let stepCost = tile.moveCost(for: domain) else { continue }
                 if blocked.contains(next) && next != goal { continue }
                 let newCost = (costSoFar[current] ?? 0) + stepCost
                 if costSoFar[next] == nil || newCost < costSoFar[next]! {
@@ -39,6 +40,7 @@ enum Pathfinder {
 
     /// All tiles reachable from `start` within `budget` movement points.
     static func reachable(from start: HexCoord, budget: Int, map: GameMap,
+                          domain: UnitDomain = .land,
                           blocked: Set<HexCoord> = []) -> [HexCoord: Int] {
         var costSoFar: [HexCoord: Int] = [start: 0]
         var frontier = PriorityQueue()
@@ -46,7 +48,7 @@ enum Pathfinder {
 
         while let current = frontier.pop() {
             for next in current.neighbors {
-                guard let tile = map[next], let stepCost = tile.moveCost else { continue }
+                guard let tile = map[next], let stepCost = tile.moveCost(for: domain) else { continue }
                 if blocked.contains(next) { continue }
                 let newCost = (costSoFar[current] ?? 0) + stepCost
                 if newCost <= budget && (costSoFar[next] == nil || newCost < costSoFar[next]!) {

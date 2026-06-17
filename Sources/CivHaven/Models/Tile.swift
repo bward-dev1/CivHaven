@@ -18,11 +18,25 @@ struct Tile: Codable, Identifiable {
         return y
     }
 
-    /// Movement points to enter this tile, or nil if impassable for land units.
+    /// Movement points to enter this tile for a land unit, or nil if impassable.
     var moveCost: Int? {
         guard let base = terrain.moveCost else { return nil }
         return base + feature.extraMoveCost
     }
+
+    /// Movement cost to enter this tile for a unit of the given domain.
+    /// Land units use terrain cost; sea units traverse water only.
+    func moveCost(for domain: UnitDomain) -> Int? {
+        switch domain {
+        case .land:
+            return moveCost
+        case .sea:
+            return terrain.isWater ? 1 : nil
+        }
+    }
+
+    var isWater: Bool { terrain.isWater }
+    var isCoastal: Bool { terrain == .coast }
 
     var isSettleable: Bool {
         terrain.isSettleable && ownerCityID == nil
